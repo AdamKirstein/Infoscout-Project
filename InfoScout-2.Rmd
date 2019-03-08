@@ -1,0 +1,247 @@
+---
+output: html_document
+runtime: shiny
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r interactive_modeler, echo=FALSE, message=FALSE}
+
+library(shiny)
+library(shinythemes)
+library(ggplot2)
+library(dplyr)
+
+logourl <- paste("http://www.nuoum.com/img/",
+                 "isc_logo.jpg", sep ="")
+
+
+#Load Data
+fb1a <- read.csv("fb_1a.csv")
+fb1b <- read.csv("fb_1b.csv")
+fb2a <- read.csv("fb_2a.csv")
+fb2b <- read.csv("fb_2b.csv")
+
+#Shiny App
+shinyApp(
+  
+  options = list(height = "1200px"),
+    
+  ui <- 
+    fluidPage(
+      theme = shinytheme("cosmo"),
+      fluidRow(
+        column(10,
+          titlePanel(
+            title = div(img(src = logourl),
+                    "  PREDICTIVE TOOL")
+          )
+        )
+      ),
+      tabsetPanel(
+        type = "pills",
+        tabPanel(
+          "By User Profile",
+          wellPanel(
+            style = "background-color: #f0cbc0; padding-bottom: 0",
+            fluidRow(
+              align = "left",
+              column(3,
+                wellPanel(
+                  style = "background-color: #ffd3b7;",
+                  selectInput(
+                    inputId = "chi", label = "Have Children",
+                    #multiple = T,
+                    choices = c("No" = 0, 
+                                "Yes" = 1),
+                    selected = NULL
+                  ),
+                  hr(),
+                  selectInput(
+                    inputId = "eth", label = "Ethnicity",
+                    #multiple = T,
+                    choices = c("Asian" = 0, 
+                                "Black" = 1, 
+                                "Hispanic" = 2, 
+                                "White" = 3,
+                                "Other" = 4
+                                ),
+                    selected = NULL
+                  ),
+                  hr(),
+                  selectInput(
+                    inputId = "mar", label = "Marital Status",
+                    #multiple = T,
+                    choices = c("Never married" = 0, 
+                                "Living with partner" = 1, 
+                                "Married" = 2, 
+                                "Separated" = 3,
+                                "Divorced" = 4, 
+                                "Widower" = 5,
+                                "Decline to answer" = 6),
+                    selected = NULL
+                  ),
+                  hr(),
+                  selectInput(
+                    inputId = "age", label = "Age",
+                    #multiple = T,
+                    choices = c("18-20" = 0, 
+                                "21-24" = 1, 
+                                "25-34" = 2, 
+                                "35-44" = 3,
+                                "45-54" = 4, 
+                                "55-64" = 5,
+                                "65+" = 6),
+                    selected = NULL
+                  ),
+                  hr(),
+                  selectInput(
+                    inputId = "inc", label = "Income",
+                    #multiple = T,
+                    choices = c("- $20k" = 0, 
+                                "$20k-40k" = 1, 
+                                "$40k-60k" = 2, 
+                                "$60k-80k" = 3,
+                                "$80k-100k" = 4, 
+                                "$100k-125k" = 5,
+                                "$125k +" = 6),
+                    selected = NULL
+                  )
+                ),
+                actionButton("go1", "Find Pages"),
+                br()
+              ),
+              column(9,
+                wellPanel(
+                  style = "height: 650px; background-color: #e5f1f9;",
+                  titlePanel("Predicted FaceBook Pages"),
+                  tableOutput("fb1Table")
+                )
+              )
+            )
+          )
+        ),
+        tabPanel(
+          "By Page Category",
+          wellPanel(
+            style = "background-color: #f0cbc0; padding-bottom: 20px",
+            fluidRow(
+              align = "center",
+              column(6,
+                wellPanel(
+                  style = "background-color: #ffd3b7;",
+                  selectInput(
+                    inputId = "fbcat", label = "FaceBook Page Category",
+                    choices = as.character(unique(fb2a$Category))
+                  )
+                )
+              ),
+              column(6,
+                wellPanel(
+                  style = "background-color: #ffd3b7;",
+                  selectInput(
+                    inputId = "fbcats", label = "FaceBook Page Sub-Category",
+                    choices = ""
+                  )
+                )
+              ),
+              actionButton("go2", "Find User Profiles")
+            ),
+            hr(),
+            wellPanel(
+              style = "height: 350px; background-color: #e5f1f9;",
+              titlePanel("Predicted FaceBook User Profiles"),
+              tableOutput("fb2Table")
+            )
+          )
+        )
+      )
+    ), 
+  
+  server <- 
+    function(input, output, session)
+      {
+        values <- reactiveValues(
+                    fb1 = NULL,
+                    fb2 = NULL)
+        observeEvent(
+          input$go1, 
+          {
+            temp <- fb1a %>%
+                    filter(C == input$chi &
+                           E == input$eth &
+                           M == input$mar &
+                           A == input$age &
+                           I == input$inc) %>% 
+                    inner_join(fb1b) %>% 
+                    select(Page, Category, Likes) %>% 
+                    top_n(20, Likes) %>% 
+                    sample_n(15) %>% 
+                    arrange(desc(Likes)) %>% 
+                    select(Page, Category)
+            values$fb1 <- temp 
+          }
+        )
+        subcats <- reactive(
+          {
+            mydata <- fb2a %>% 
+                      filter(Category == input$fbcat) %>% 
+                      select(Subcategory)
+            as.character(
+              unique(
+                mydata$Subcategory
+              )
+            )
+          }
+        )
+        observe(
+          {
+            updateSelectInput(
+              session, 
+              "fbcats", 
+              choices = subcats()
+            )
+          }
+        )
+        observeEvent(
+          input$go2, 
+          {
+            temp <- fb2a %>%
+                    filter(Category == input$fbcat &
+                           Subcategory == input$fbcats) %>% 
+                    inner_join(fb2b) %>% 
+                    select(C, E, M, A, I, Likes) %>% 
+                    top_n(12, Likes) %>% 
+                    sample_n(7) %>% 
+                    arrange(desc(Likes)) %>% 
+                    select(Have_Children = C, 
+                           Ethnicity = E, 
+                           Marital_Status = M, 
+                           Age = A, 
+                           Income = I) 
+            values$fb2 <- temp
+          }
+        )
+        output$fb1Table <- 
+          renderTable(
+            values$fb1,
+            width = "100%",
+            align = "l",
+            striped = FALSE, 
+            bordered = TRUE
+          )
+        output$fb2Table <- 
+          renderTable(
+            values$fb2,
+            width = "100%",
+            align = "c",
+            striped = FALSE, 
+            bordered = TRUE
+          )
+                  
+  }
+  
+)
+```
